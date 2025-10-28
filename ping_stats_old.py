@@ -1,110 +1,151 @@
 #!/usr/bin/env python3
 
-import subprocess
-import re
-import sys
-import numpy as np
-import argparse
+import subprocess #Runs external commands (like ping) from within the Python script.
+import re #Finds patterns in text using "Regular Expressions" (used here to find time=...).
+import sys #Interacts with the Python system itself (used for exiting the script and handling errors).
+import numpy as np #A powerful math library for fast statistical calculations (mean, std dev, percentiles).
+import argparse #Parses command-line arguments provided by the user (like the target and count).
+import matplotlib.pyplot as plt #Creates graphs and plots from data.
 
-def run_stability_test(target: str, count: int):
+def conduct_ping_test(target: str, count: int) -> list[float]:
     """
-    Pings a target and calculates detailed latency statistics, including percentiles.
+    Runs the ping command and extracts the latency values.
+    
+    Args:
+        target: The hostname or IP to ping.
+        count: The number of pings to send.
+        
+    Returns:
+        A list of floats, where each float is a successful ping's latency in ms.
+        Returns an empty list if no pings succeed.
     """
-    print("--- Starting Network Stability Test (Python Version) ---")
-    print(f"Target:   {target}")
-    print(f"Pinging:  {count} times")
-    print("Progress: ", end='', flush=True) # end='' and flush=True keep dots on the same line
-
-    # The command to run. '-c' is for count on macOS/Linux.
+    print("--- Step 1: Conducting Ping Test ---")
+    print(f"Pinging {target} {count} times...")
+    
     ping_command = ["ping", "-c", str(count), target]
     latencies = []
     
     try:
-        # Start the ping process
-        # stdout=subprocess.PIPE allows us to capture the output.
-        # text=True decodes the output as text.
+        # We use subprocess.run to wait for the command to complete.
+        # result = subprocess.run(ping_command, capture_output=True, text=True, check=False)
+
         process = subprocess.Popen(ping_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-        # Process the output line-by-line in real-time
         for line in process.stdout:
-            # We print the original line so the user sees the ping output live
-            print(line, end='')
+            line = line.strip()
+            if "time=" in line:
+                print(".", end="", flush=True)  # print one dot per successful ping
+                match = re.search(r"time=([\d.]+)", line)
+                if match:
+                    latencies.append(float(match.group(1)))
+        process.wait()
+        print("\nPing test complete.")
 
-            # Use a regular expression to find the time in lines like:
-            # 64 bytes from 142.250.183.36: icmp_seq=1 ttl=118 time=8.43 ms
-            match = re.search(r"time=([\d.]+)", line)
-            if match:
-                # If we find a match, extract the time (group 1), convert to float, and store it.
-                latency = float(match.group(1))
-                latencies.append(latency)
-                # Print a progress dot for each successful ping
-                # Note: The dots will appear after the full ping output is printed in this version.
-        
-        process.wait() # Wait for the ping process to finish
-
+        # # Process the captured output to extract latencies.
+        # for line in result.stdout.splitlines():
+        #     match = re.search(r"time=([\d.]+)", line)
+        #     if match:
+        #         latencies.append(float(match.group(1)))
+                
     except FileNotFoundError:
-        print("\nError: 'ping' command not found. Is it installed and in your system's PATH?", file=sys.stderr)
+        print("Error: 'ping' command not found.", file=sys.stderr)
         sys.exit(1)
-    except Exception as e:
-        print(f"\nAn error occurred: {e}", file=sys.stderr)
-        sys.exit(1)
+        
+    print(f"Ping test complete. {len(latencies)} successful pings recorded.")
+    return latencies
 
+
+def analyze_ping_results(latencies: list[float]) -> dict:
+    """
+    Takes a list of latencies and computes detailed statistics.
+    
+    Args:
+        latencies: A list of latency values.
+        
+    Returns:
+        A dictionary containing all calculated statistics (min, max, avg, std, percentiles).
+    """
+    print("--- Step 2: Analyzing Ping Results ---")
     if not latencies:
-        print("\n--- No successful pings were recorded. Cannot calculate statistics. ---", file=sys.stderr)
-        sys.exit(1)
+        return {}
 
-    # --- Statistical Analysis using NumPy ---
-    # Convert our list of latencies to a NumPy array for efficient calculations.
+    # Use NumPy for efficient and easy statistical calculations.
     latencies_np = np.array(latencies)
+    
+    stats = {
+        'min': np.min(latencies_np),
+        'max': np.max(latencies_np),
+        'avg': np.mean(latencies_np),
+        'std': np.std(latencies_np),
+        'p50': np.percentile(latencies_np, 50),
+        'p90': np.percentile(latencies_np, 90),
+        'p95': np.percentile(latencies_np, 95),
+        'p99': np.percentile(latencies_np, 99),
+    }
+    print("Analysis complete.")
+    return stats
 
-    # Standard stats
-    min_val = np.min(latencies_np)
-    max_val = np.max(latencies_np)
-    avg_val = np.mean(latencies_np)
-    std_dev = np.std(latencies_np)
 
-    # Percentiles
-    p50 = np.percentile(latencies_np, 50)
-    p90 = np.percentile(latencies_np, 90)
-    p95 = np.percentile(latencies_np, 95)
-    p99 = np.percentile(latencies_np, 99)
-
-    # --- Print The Report ---
-    print("\n\n--- Standard Ping Summary ---")
-    print(f"round-trip min/avg/max/stddev = {min_val:.3f}/{avg_val:.3f}/{max_val:.3f}/{std_dev:.3f} ms")
+def print_report(analyzed_results: dict):
+    """
+    Prints the formatted statistical report to the console.
+    """
+    print("\n--- Statistical Report ---")
+    print("--- Standard Ping Summary ---")
+    print(f"round-trip min/avg/max/stddev = {analyzed_results['min']:.3f}/{analyzed_results['avg']:.3f}/{analyzed_results['max']:.3f}/{analyzed_results['std']:.3f} ms")
     
     print("\n--- Enhanced Stability Analysis (Percentiles) ---")
-    print(f"Median Latency (p50):      {p50:>8.3f} ms   (50% of pings were faster than this)")
-    print(f"90th Percentile (p90):     {p90:>8.3f} ms   (90% of pings were faster than this)")
-    print(f"95th Percentile (p95):     {p95:>8.3f} ms   (95% of pings were faster than this)")
-    print(f"99th Percentile (p99):     {p99:>8.3f} ms   (Ignoring the worst 1% of pings)")
+    print(f"Median Latency (p50):      {analyzed_results['p50']:>8.3f} ms")
+    print(f"95th Percentile (p95):     {analyzed_results['p95']:>8.3f} ms")
+    print(f"99th Percentile (p99):     {analyzed_results['p99']:>8.3f} ms")
+    print("--------------------------")
 
-    print("\n--- Bell Curve Analysis (Sigma Perspective) ---")
-    print(f"Based on Avg: {avg_val:.3f} ms and StdDev: {std_dev:.3f} ms")
+
+def plot_graph(latencies: list[float], analyzed_results: dict, target: str, save_path: str = None):
+    """
+    Generates and displays/saves a plot of the latency results.
     
-    # Calculate actual percentage of data within the sigma ranges
-    within_1_sigma = np.sum((latencies_np >= avg_val - std_dev) & (latencies_np <= avg_val + std_dev)) / len(latencies_np) * 100
-    within_2_sigma = np.sum((latencies_np >= avg_val - 2*std_dev) & (latencies_np <= avg_val + 2*std_dev)) / len(latencies_np) * 100
-    within_3_sigma = np.sum((latencies_np >= avg_val - 3*std_dev) & (latencies_np <= avg_val + 3*std_dev)) / len(latencies_np) * 100
-
-    print(f"Range for 2-sigma (±2σ):   {max(0, avg_val - 2*std_dev):>6.2f} ms to {avg_val + 2*std_dev:6.2f} ms")
-    print(f"  - In theory, this covers 95% of data. Your actual coverage: {within_2_sigma:.1f}%")
-
-    print(f"Range for 3-sigma (±3σ):   {max(0, avg_val - 3*std_dev):>6.2f} ms to {avg_val + 3*std_dev:6.2f} ms")
-    print(f"  - In theory, this covers 99.7% of data. Your actual coverage: {within_3_sigma:.1f}%")
+    Args:
+        latencies: The raw list of latencies for the main plot line.
+        analyzed_results: The dictionary of stats for plotting horizontal lines.
+        target: The ping target hostname for the plot title.
+        save_path: Optional path to save the file. If None, shows an interactive plot.
+    """
+    print("--- Step 3: Generating Plot ---")
     
-    print("-------------------------------------------------")
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    ax.plot(range(1, len(latencies) + 1), latencies, label='Ping Latency', color='royalblue', alpha=0.8, linewidth=1.5)
+
+    ax.axhline(y=analyzed_results['avg'], color='green', linestyle='--', label=f"Average ({analyzed_results['avg']:.2f} ms)")
+    ax.axhline(y=analyzed_results['p95'], color='orange', linestyle='--', label=f"p95 ({analyzed_results['p95']:.2f} ms)")
+    ax.axhline(y=analyzed_results['p99'], color='red', linestyle='--', label=f"p99 ({analyzed_results['p99']:.2f} ms)")
+
+    ax.set_title(f"Ping Latency Over Time for '{target}'", fontsize=16)
+    ax.set_xlabel("Ping Number", fontsize=12)
+    ax.set_ylabel("Latency (ms)", fontsize=12)
+    ax.legend()
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.set_ylim(bottom=0)
+    ax.set_xlim(left=1)
+
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+        print(f"Plot saved successfully to '{save_path}'")
+    else:
+        print("Displaying interactive plot window...")
+        plt.show()
 
 
+# ==============================================================================
+# Main Program Execution
+# ==============================================================================
 if __name__ == "__main__":
-    # This block runs when the script is executed directly.
-    # It sets up command-line argument parsing.
-    parser = argparse.ArgumentParser(
-        description="A script to measure network stability by calculating latency percentiles.",
-        formatter_class=argparse.RawTextHelpFormatter # For better help text formatting
-    )
+    parser = argparse.ArgumentParser(description="Measure network stability with detailed statistics and optional plotting.")
     parser.add_argument("target", help="The hostname or IP address to ping.")
     parser.add_argument("count", type=int, help="The number of times to ping.")
+    parser.add_argument("--plot", action="store_true", help="Display an interactive plot of the results.")
+    parser.add_argument("--save", metavar="FILENAME", help="Save the plot to a file (e.g., plot.png).")
     
     args = parser.parse_args()
 
@@ -112,4 +153,24 @@ if __name__ == "__main__":
         print("Error: Ping count must be at least 10 for meaningful statistics.", file=sys.stderr)
         sys.exit(1)
 
-    run_stability_test(args.target, args.count)
+    # --- Main Program Flow ---
+    # 1. Conduct the test to get raw data.
+    ping_results = conduct_ping_test(args.target, args.count)
+
+    if not ping_results:
+        print("\nTest finished, but no data was collected. Exiting.", file=sys.stderr)
+        sys.exit(1)
+
+    # 2. Analyze the raw data to get statistics.
+    analyzed_data = analyze_ping_results(ping_results)
+
+    # 3. Print the text-based report.
+    print_report(analyzed_data)
+
+    # 4. Conditionally generate a plot.
+    if args.plot or args.save:
+        # Note: plot_graph needs both the raw results (for the line) and the analyzed data (for the averages).
+        plot_graph(ping_results, analyzed_data, args.target, save_path=args.save)
+        
+    print("\n--- All tasks complete. ---")
+

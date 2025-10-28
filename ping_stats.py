@@ -27,24 +27,32 @@ def conduct_ping_test(target: str, count: int) -> list[float]:
     
     try:
         # We use subprocess.run to wait for the command to complete.
-        result = subprocess.run(ping_command, capture_output=True, text=True, check=False)
-        
-        # Print the raw output for user visibility and debugging.
-        print("\n--- Raw Ping Output ---")
-        print(result.stdout)
-        print("-----------------------\n")
+        # result = subprocess.run(ping_command, capture_output=True, text=True, check=False)
 
-        # Process the captured output to extract latencies.
-        for line in result.stdout.splitlines():
-            match = re.search(r"time=([\d.]+)", line)
-            if match:
-                latencies.append(float(match.group(1)))
+        # Popen runs the command asynchronously, giving you access to its output line-by-line.
+        # for line in process.stdout: reads output in real-time.
+        # Each time a line containing time= appears, it prints a . immediately.
+        # flush=True forces Python to display the dot right away (no buffering).
+        # After all pings, it waits for completion with process.wait().
+
+        process = subprocess.Popen(ping_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+
+        for line in process.stdout:
+            line = line.strip()
+            if "time=" in line:
+                print(".", end="", flush=True)  # print one dot per successful ping
+                match = re.search(r"time=([\d.]+)", line)
+                if match:
+                    latencies.append(float(match.group(1)))
+        process.wait()
                 
     except FileNotFoundError:
         print("Error: 'ping' command not found.", file=sys.stderr)
         sys.exit(1)
         
     print(f"Ping test complete. {len(latencies)} successful pings recorded.")
+    print(latencies)
     return latencies
 
 
