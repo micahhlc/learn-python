@@ -19,7 +19,7 @@ def conduct_ping_test(target: str, count: int) -> list[float]:
         A list of floats, where each float is a successful ping's latency in ms.
         Returns an empty list if no pings succeed.
     """
-    print("--- Step 1: Conducting Ping Test ---")
+    print("--- Conducting Ping Test ---")
     print(f"Pinging {target} {count} times...")
     
     ping_command = ["ping", "-c", str(count), target]
@@ -50,9 +50,9 @@ def conduct_ping_test(target: str, count: int) -> list[float]:
     except FileNotFoundError:
         print("Error: 'ping' command not found.", file=sys.stderr)
         sys.exit(1)
-        
     print(f"Ping test complete. {len(latencies)} successful pings recorded.")
     print(latencies)
+    print("\n\n")
     return latencies
 
 
@@ -66,7 +66,7 @@ def analyze_ping_results(latencies: list[float]) -> dict:
     Returns:
         A dictionary containing all calculated statistics (min, max, avg, std, percentiles).
     """
-    print("--- Step 2: Analyzing Ping Results ---")
+    print("--- Analyzing Ping Results ---")
     if not latencies:
         return {}
 
@@ -84,6 +84,7 @@ def analyze_ping_results(latencies: list[float]) -> dict:
         'p99': np.percentile(latencies_np, 99),
     }
     print("Analysis complete.")
+    print("\n\n")
     return stats
 
 
@@ -91,15 +92,22 @@ def print_report(analyzed_results: dict):
     """
     Prints the formatted statistical report to the console.
     """
-    print("\n--- Statistical Report ---")
     print("--- Standard Ping Summary ---")
-    print(f"round-trip min/avg/max/stddev = {analyzed_results['min']:.3f}/{analyzed_results['avg']:.3f}/{analyzed_results['max']:.3f}/{analyzed_results['std']:.3f} ms")
+    # print(f"round-trip min/avg/max/stddev = {analyzed_results['min']:.3f}/{analyzed_results['avg']:.3f}/{analyzed_results['max']:.3f}/{analyzed_results['std']:.3f} ms")
+    print(f"min: {analyzed_results['min']:.3f}")
+    print(f"avg: {analyzed_results['avg']:.3f}")
+    print(f"max: {analyzed_results['max']:.3f}")
+    print(f"stddev: {analyzed_results['std']:.3f}")
     
-    print("\n--- Enhanced Stability Analysis (Percentiles) ---")
+    print("\n")
+
+    print("--- Enhanced Stability Analysis (Percentiles) ---")
     print(f"Median Latency (p50):      {analyzed_results['p50']:>8.3f} ms")
     print(f"95th Percentile (p95):     {analyzed_results['p95']:>8.3f} ms")
     print(f"99th Percentile (p99):     {analyzed_results['p99']:>8.3f} ms")
-    print("--------------------------")
+    print(f"One stddev:                 {analyzed_results['p50'] + analyzed_results['std']:>8.3f} ms")
+    print(f"Two stddev:                 {analyzed_results['p50'] + (analyzed_results['std'] * 2):>8.3f} ms")
+    print("\n")
 
 
 def plot_graph(latencies: list[float], analyzed_results: dict, target: str, save_path: str = None):
@@ -112,7 +120,7 @@ def plot_graph(latencies: list[float], analyzed_results: dict, target: str, save
         target: The ping target hostname for the plot title.
         save_path: Optional path to save the file. If None, shows an interactive plot.
     """
-    print("--- Step 3: Generating Plot ---")
+    print("--- Generating Plot ---")
     
     fig, ax = plt.subplots(figsize=(12, 7))
 
@@ -121,6 +129,7 @@ def plot_graph(latencies: list[float], analyzed_results: dict, target: str, save
     ax.axhline(y=analyzed_results['avg'], color='green', linestyle='--', label=f"Average ({analyzed_results['avg']:.2f} ms)")
     ax.axhline(y=analyzed_results['p95'], color='orange', linestyle='--', label=f"p95 ({analyzed_results['p95']:.2f} ms)")
     ax.axhline(y=analyzed_results['p99'], color='red', linestyle='--', label=f"p99 ({analyzed_results['p99']:.2f} ms)")
+    ax.axhline(y=analyzed_results['std'], color='gold', linestyle='--', label=f"stddev ({analyzed_results['std']:.2f} ms)")
 
     ax.set_title(f"Ping Latency Over Time for '{target}'", fontsize=16)
     ax.set_xlabel("Ping Number", fontsize=12)
